@@ -1,0 +1,85 @@
+@import url('https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Cairo:wght@300;400;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-on-primary-fixed: #3a0a00;
+  --color-on-surface-variant: #55423d;
+  --color-background: #fff9ed;
+  --color-secondary-fixed: #e6e2da;
+  --color-on-secondary-container: #66645e;
+  --color-secondary-fixed-dim: #c9c6bf;
+  --color-on-tertiary-fixed: #1b1c1c;
+  --color-on-background: #1e1c13;
+  --color-surface-dim: #e0d9cc;
+  --color-surface-container-low: #faf3e5;
+  --color-primary-fixed-dim: #ffb59f;
+  --color-surface-bright: #fff9ed;
+  --color-on-error-container: #93000a;
+  --color-tertiary-container: #545454;
+  --color-surface-container-high: #eee8da;
+  --color-tertiary-fixed-dim: #c8c6c5;
+  --color-surface-container: #f4eddf;
+  --color-primary-container: #8e3a1f;
+  --color-on-tertiary: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-tertiary-fixed-variant: #474747;
+  --color-secondary: #605e58;
+  --color-inverse-primary: #ffb59f;
+  --color-primary: #6f240a;
+  --color-on-primary: #ffffff;
+  --color-surface-variant: #e8e2d4;
+  --color-outline: #89726c;
+  --color-tertiary-fixed: #e4e2e1;
+  --color-secondary-container: #e6e2da;
+  --color-on-secondary: #ffffff;
+  --color-surface-container-highest: #e8e2d4;
+  --color-on-surface: #1e1c13;
+  --color-surface-tint: #9b4428;
+  --color-on-secondary-fixed: #1c1c17;
+  --color-on-error: #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface: #fff9ed;
+  --color-inverse-on-surface: #f7f0e2;
+  --color-primary-fixed: #ffdbd0;
+  --color-error: #ba1a1a;
+  --color-on-tertiary-container: #cac8c8;
+  --color-inverse-surface: #333027;
+  --color-outline-variant: #dcc1b9;
+  --color-on-primary-fixed-variant: #7c2d13;
+  --color-on-primary-container: #ffb8a3;
+  --color-on-secondary-fixed-variant: #484741;
+  --color-tertiary: #3d3d3d;
+
+  --font-headline-xl: "Libre Caslon Text", "Cairo", serif;
+  --font-headline-lg: "Libre Caslon Text", "Cairo", serif;
+  --font-headline-md: "Cairo", "Libre Caslon Text", serif;
+  --font-body-lg: "Cairo", "Plus Jakarta Sans", sans-serif;
+  --font-body-md: "Cairo", "Plus Jakarta Sans", sans-serif;
+  --font-label-lg: "Cairo", "Plus Jakarta Sans", sans-serif;
+}
+
+body {
+  background-color: #fff9ed;
+  color: #1e1c13;
+  font-family: "Cairo", "Plus Jakarta Sans", sans-serif;
+  min-height: max(884px, 100dvh);
+}
+
+.active-dot {
+  box-shadow: 0 0 0 4px rgba(142, 58, 31, 0.2);
+}
+
+.sunbaked-shadow {
+  box-shadow: 0 10px 30px -5px rgba(142, 58, 31, 0.12);
+}
+
+.glass-summary {
+  background: rgba(255, 249, 237, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  display: none;
+}

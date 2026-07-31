@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Remix: Celeste - سيلست",
+  "description": "تطبيق سيلست الفاخر لطلب الطعام وحجز الطاولات وتتبع الطلبات بتصميم دافئ وعصري. Celeste premium boutique cafe app for food delivery, table reservations, and live order tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
