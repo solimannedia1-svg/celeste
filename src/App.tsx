@@ -458,40 +458,88 @@ export default function App() {
   };
 
   const handleUpdateProfileUser = (updatedUser: User) => {
-    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+    setUsers(prev => {
+      const updatedList = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
+      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users: updatedList })
+      }).catch(err => console.error('Sync users error:', err));
+      return updatedList;
+    });
     setCurrentUser(updatedUser);
+    localStorage.setItem('celeste_current_user', JSON.stringify(updatedUser));
     triggerToast('تم تحديث بيانات ملفك الشخصي بنجاح!');
   };
 
   const handleAddUserAdmin = (newUser: User) => {
-    setUsers(prev => [newUser, ...prev]);
+    setUsers(prev => {
+      const updatedList = [newUser, ...prev];
+      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users: updatedList })
+      }).catch(err => console.error('Sync users error:', err));
+      return updatedList;
+    });
     triggerToast(`تمت إضافة العضو ${newUser.name} بنجاح!`);
   };
 
   const handleUpdateUserAdmin = (updatedUser: User) => {
-    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+    setUsers(prev => {
+      const updatedList = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
+      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users: updatedList })
+      }).catch(err => console.error('Sync users error:', err));
+      return updatedList;
+    });
     if (currentUser && currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
+      localStorage.setItem('celeste_current_user', JSON.stringify(updatedUser));
     }
     triggerToast(`تم تحديث بيانات العضو ${updatedUser.name} بنجاح!`);
   };
 
   const handleDeleteUserAdmin = (userId: string) => {
-    setUsers(prev => prev.filter(u => u.id !== userId));
+    setUsers(prev => {
+      const updatedList = prev.filter(u => u.id !== userId);
+      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users: updatedList })
+      }).catch(err => console.error('Sync users error:', err));
+      return updatedList;
+    });
     if (currentUser && currentUser.id === userId) {
       setCurrentUser(null);
+      localStorage.removeItem('celeste_current_user');
     }
     triggerToast(`تم حذف العضو بنجاح.`);
   };
 
   const handleToggleUserStatusAdmin = (userId: string) => {
-    setUsers(prev => prev.map(u => {
-      if (u.id === userId) {
-        const newStatus: 'active' | 'blocked' = u.status === 'active' ? 'blocked' : 'active';
-        return { ...u, status: newStatus };
-      }
-      return u;
-    }));
+    setUsers(prev => {
+      const updatedList = prev.map(u => {
+        if (u.id === userId) {
+          const newStatus: 'active' | 'blocked' = u.status === 'active' ? 'blocked' : 'active';
+          return { ...u, status: newStatus };
+        }
+        return u;
+      });
+      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users: updatedList })
+      }).catch(err => console.error('Sync users error:', err));
+      return updatedList;
+    });
     triggerToast('تم تغيير حالة حساب العضو.');
   };
 
@@ -618,6 +666,12 @@ export default function App() {
 
   const handleUpdateRestaurantInfo = (newInfo: RestaurantInfo) => {
     setRestaurantInfo(newInfo);
+    localStorage.setItem('celeste_restaurant_info', JSON.stringify(newInfo));
+    fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restaurantInfo: newInfo })
+    }).catch(err => console.error('Sync restaurantInfo error:', err));
     triggerToast('تم تحديث بيانات وتفاصيل المطعم بنجاح!');
   };
 

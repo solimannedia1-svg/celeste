@@ -72,6 +72,13 @@ export default function AuthModal({
   const [editPhone, setEditPhone] = useState(currentUser?.phone || '');
   const [editPassword, setEditPassword] = useState('');
 
+  React.useEffect(() => {
+    if (currentUser) {
+      setEditName(currentUser.name || '');
+      setEditPhone(currentUser.phone || '');
+    }
+  }, [currentUser, isOpen]);
+
   // Errors
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
