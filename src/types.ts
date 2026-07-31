@@ -6,6 +6,27 @@ export interface RestaurantInfo {
   address: string;
   phone: string;
   workingHours: string;
+  currency?: string;
+}
+
+export interface SupervisorPermissions {
+  orders: boolean;       // إدارة الطلبات
+  reservations: boolean; // إدارة حجوزات الطاولات
+  menu: boolean;         // إدارة قائمة الطعام والأصناف
+  promos?: boolean;      // إدارة كروت الخصم والقسائم
+}
+
+export interface PromoCode {
+  id: string;
+  code: string;
+  type: 'percentage' | 'fixed';
+  value: number; // e.g. 20 for 20% or 50 for 50 EGP
+  minOrderValue?: number;
+  maxDiscount?: number;
+  isActive: boolean;
+  expiryDate?: string;
+  usageCount?: number;
+  maxUses?: number; // الحد الأقصى لعدد العملاء/الاستخدامات
 }
 
 export interface User {
@@ -16,7 +37,9 @@ export interface User {
   password: string;
   createdAt: string;
   status: 'active' | 'blocked';
+  role?: 'admin' | 'supervisor' | 'customer';
   notes?: string;
+  permissions?: SupervisorPermissions;
 }
 
 export interface MenuItem {
@@ -75,6 +98,8 @@ export interface Order {
   driverImage?: string;
   status: 'received' | 'preparing' | 'on_the_way' | 'delivered';
   estimatedTime: string;
+  promoCode?: string;
+  discountAmount?: number;
   timestamps: {
     received: string;
     preparing: string;

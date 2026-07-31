@@ -1,24 +1,26 @@
 import { useState, useEffect } from 'react';
-import { CartItem, Order, User } from '../types';
-import { Trash2, Plus, Minus, Store, Truck, MapPin, Ticket, CheckCircle, ShoppingBag, User as UserIcon, Phone } from 'lucide-react';
+import { CartItem, Order, User, PromoCode } from '../types';
+import { Trash2, Plus, Minus, Store, Truck, MapPin, Ticket, CheckCircle, ShoppingBag, User as UserIcon, Phone, X, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CartViewProps {
   cartItems: CartItem[];
   currentUser?: User | null;
+  promoCodes?: PromoCode[];
   onUpdateQuantity: (id: string, newQty: number) => void;
   onRemoveItem: (id: string) => void;
   onCheckout: (order: Order) => void;
+  onOpenAuth?: () => void;
 }
 
-export default function CartView({ cartItems, currentUser, onUpdateQuantity, onRemoveItem, onCheckout }: CartViewProps) {
+export default function CartView({ cartItems, currentUser, promoCodes = [], onUpdateQuantity, onRemoveItem, onCheckout, onOpenAuth }: CartViewProps) {
   const [deliveryType, setDeliveryType] = useState<'pickup' | 'home'>('pickup');
   const [customerName, setCustomerName] = useState(currentUser?.name || '');
   const [customerPhone, setCustomerPhone] = useState(currentUser?.phone || '');
   const [customAddress, setCustomAddress] = useState('');
-  const [promoCode, setPromoCode] = useState('');
+  const [promoCodeInput, setPromoCodeInput] = useState('');
   const [promoApplied, setPromoApplied] = useState(false);
-  const [discountPercent, setDiscountPercent] = useState(0);
+  const [appliedPromoInfo, setPromoAppliedInfo] = useState<{ code: string; label: string; amount: number } | null>(null);
   const [promoError, setPromoError] = useState('');
 
   useEffect(() => {
@@ -35,27 +37,114 @@ export default function CartView({ cartItems, currentUser, onUpdateQuantity, onR
   }, 0);
 
   const deliveryFee = deliveryType === 'home' ? 30.0 : 0.0;
-  const discountAmount = subtotal * (discountPercent / 100);
-  const total = subtotal + deliveryFee - discountAmount;
-
-  const handleApplyPromo = () => {
-    setPromoError('');
-    const code = promoCode.trim().toUpperCase();
-    if (code === 'CELESTE10') {
-      setDiscountPercent(10);
-      setPromoApplied(true);
-    } else if (code === 'FREE') {
-      setDiscountPercent(20);
-      setPromoApplied(true);
-    } else if (code === '') {
-      setPromoError('الرجاء إدخال الرمز الترويجي أولاً');
+  
+  // Re-evaluate discount if subtotal changes
+  let discountAmount = 0;
+  if (promoApplied && appliedPromoInfo) {
+    const foundCode = promoCodes.find(p => p.code.toUpperCase() === appliedPromoInfo.code.toUpperCase());
+    if (foundCode) {
+      if (foundCode.type === 'percentage') {
+        discountAmount = subtotal * (foundCode.value / 100);
+        if (foundCode.maxDiscount && discountAmount > foundCode.maxDiscount) {
+          discountAmount = foundCode.maxDiscount;
+        }
+      } else {
+        discountAmount = Math.min(foundCode.value, subtotal);
+      }
     } else {
-      setPromoError('رمز ترويجي غير صالح');
+      discountAmount = appliedPromoInfo.amount;
     }
+  }
+
+  const total = Math.max(0, subtotal + deliveryFee - discountAmount);
+
+  const handleApplyPromo = (codeToApply?: string) => {
+    setPromoError('');
+    const code = (codeToApply || promoCodeInput).trim().toUpperCase();
+    if (!code) {
+      setPromoError('الرجاء إدخال الرمز الترويجي أولاً');
+      return;
+    }
+
+    const availablePromos = promoCodes && promoCodes.length > 0 ? promoCodes : [
+      { id: '1', code: 'WELCOME10', type: 'percentage' as const, value: 10, minOrderValue: 100, isActive: true },
+      { id: '2', code: 'CELESTE50', type: 'fixed' as const, value: 50, minOrderValue: 200, isActive: true }
+    ];
+
+    const found = availablePromos.find(p => p.code.toUpperCase() === code);
+
+    if (!found) {
+      setPromoError('كود الخصم غير صحيح أو غير موجود.');
+      return;
+    }
+
+    if (!found.isActive) {
+      setPromoError('كود الخصم هذا متوقف حالياً.');
+      return;
+    }
+
+    if (found.expiryDate) {
+      const expiry = new Date(found.expiryDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (expiry < today) {
+        setPromoError('عفواً، انتهت صلاحية هذا الكود (منتهي التاريخ).');
+        return;
+      }
+    }
+
+    if (found.maxUses !== undefined && found.maxUses !== null && found.maxUses > 0) {
+      const currentUses = found.usageCount || 0;
+      if (currentUses >= found.maxUses) {
+        setPromoError('عفواً، استنفد هذا الكود الحد الأقصى للمستخدمين والمستفيدين ولم يعد متاحاً (اكسبيرد).');
+        return;
+      }
+    }
+
+    if (found.minOrderValue && subtotal < found.minOrderValue) {
+      setPromoError(`الحد الأدنى للطلب لاستخدام كود الخصم هذا هو ${found.minOrderValue} ج.م`);
+      return;
+    }
+
+    let calculatedDiscount = 0;
+    let label = '';
+    if (found.type === 'percentage') {
+      calculatedDiscount = subtotal * (found.value / 100);
+      if (found.maxDiscount && calculatedDiscount > found.maxDiscount) {
+        calculatedDiscount = found.maxDiscount;
+        label = `خصم ${found.value}% (بحد أقصى ${found.maxDiscount} ج.م)`;
+      } else {
+        label = `خصم ${found.value}%`;
+      }
+    } else {
+      calculatedDiscount = Math.min(found.value, subtotal);
+      label = `خصم ${found.value} ج.م`;
+    }
+
+    setPromoAppliedInfo({
+      code: found.code,
+      label,
+      amount: calculatedDiscount
+    });
+    setPromoCodeInput(found.code);
+    setPromoApplied(true);
+  };
+
+  const handleRemovePromo = () => {
+    setPromoApplied(false);
+    setPromoAppliedInfo(null);
+    setPromoCodeInput('');
+    setPromoError('');
   };
 
   const handleConfirmOrder = () => {
     if (cartItems.length === 0) return;
+
+    if (!currentUser) {
+      if (onOpenAuth) onOpenAuth();
+      alert('عفواً! يلزم تسجيل الدخول أو إنشاء حساب جديد أولاً حتى تتمكن من تأكيد وإرسال الطلب.');
+      return;
+    }
 
     if (!customerName.trim()) {
       alert('الرجاء إدخال اسم العميل أولاً لإتمام الطلب.');
@@ -87,6 +176,8 @@ export default function CartView({ cartItems, currentUser, onUpdateQuantity, onR
       address: addressText,
       status: 'received',
       estimatedTime: '15-20 دقيقة',
+      promoCode: promoApplied ? appliedPromoInfo?.code : undefined,
+      discountAmount: promoApplied ? discountAmount : undefined,
       timestamps: {
         received: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
         preparing: new Date(Date.now() + 5 * 60 * 1000).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
@@ -254,6 +345,26 @@ export default function CartView({ cartItems, currentUser, onUpdateQuantity, onR
 
           {/* Customer Details Form */}
           <section className="space-y-4 bg-surface-container-low p-5 rounded-3xl border border-outline-variant/30">
+            {!currentUser && (
+              <div className="bg-amber-500/10 border-2 border-amber-500/30 p-4 rounded-2xl space-y-2.5 text-right">
+                <div className="flex items-center gap-2 text-amber-800 font-black text-xs md:text-sm">
+                  <UserIcon className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <span>يلزم تسجيل الدخول أو إنشاء حساب جديد لإتمام الطلب 🔒</span>
+                </div>
+                <p className="text-xs text-amber-900/80 leading-relaxed font-bold">
+                  عفواً، يتوجب عليك تسجيل الدخول بحسابك أولاً حتى تتمكن من إتمام الطلب ومتابعة حالته.
+                </p>
+                <button
+                  type="button"
+                  onClick={onOpenAuth}
+                  className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer"
+                >
+                  <UserIcon className="w-4 h-4" />
+                  <span>تسجيل الدخول / إنشاء حساب جديد الآن 👤</span>
+                </button>
+              </div>
+            )}
+
             <h2 className="font-headline-md text-lg text-primary font-bold flex items-center gap-2">
               <UserIcon className="w-5 h-5 text-primary" />
               بيانات المستلم والتوصيل
@@ -322,36 +433,52 @@ export default function CartView({ cartItems, currentUser, onUpdateQuantity, onR
           </section>
 
           {/* Promo Code Input */}
-          <section className="space-y-2">
+          <section className="space-y-3">
             <div className="relative">
               <Ticket className="absolute right-4 top-3.5 w-5 h-5 text-secondary/60 pointer-events-none" />
               <input
                 id="promo-input"
                 type="text"
-                value={promoCode}
+                value={promoCodeInput}
                 onChange={(e) => {
-                  setPromoCode(e.target.value);
+                  setPromoCodeInput(e.target.value);
                   setPromoError('');
                 }}
                 disabled={promoApplied}
-                placeholder={promoApplied ? 'تم تطبيق الرمز الترويجي بنجاح' : 'هل لديك رمز ترويجي؟ جرب CELESTE10'}
-                className="w-full bg-surface-container-low border border-outline-variant/30 rounded-full py-3.5 pr-11 pl-28 focus:ring-1 focus:ring-primary focus:border-primary transition-all text-right font-body-md text-sm text-on-surface placeholder:text-secondary/50 disabled:bg-green-50 disabled:text-green-800 disabled:border-green-300"
+                placeholder={promoApplied ? `كود مفعل: ${appliedPromoInfo?.code}` : 'هل لديك كود خصم ترويجي؟ أدخله هنا'}
+                className="w-full bg-surface-container-low border border-outline-variant/30 rounded-2xl py-3.5 pr-11 pl-28 focus:ring-1 focus:ring-primary focus:border-primary transition-all text-right font-body-md text-sm text-on-surface uppercase placeholder:text-secondary/50 placeholder:normal-case disabled:bg-emerald-50 disabled:text-emerald-900 disabled:border-emerald-300 font-extrabold"
               />
-              <button
-                id="apply-promo-btn"
-                onClick={handleApplyPromo}
-                disabled={promoApplied}
-                className="absolute left-2 top-2 bottom-2 px-6 bg-primary text-white rounded-full font-bold text-xs hover:opacity-90 disabled:bg-green-600 disabled:text-white transition-all active:scale-95"
-              >
-                {promoApplied ? 'مطبّق' : 'تطبيق'}
-              </button>
+              {promoApplied ? (
+                <button
+                  onClick={handleRemovePromo}
+                  className="absolute left-2 top-2 bottom-2 px-4 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl font-bold text-xs transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>إلغاء الخصم</span>
+                </button>
+              ) : (
+                <button
+                  id="apply-promo-btn"
+                  onClick={() => handleApplyPromo()}
+                  className="absolute left-2 top-2 bottom-2 px-6 bg-primary text-white rounded-xl font-bold text-xs hover:opacity-90 transition-all active:scale-95 cursor-pointer shadow-xs"
+                >
+                  تطبيق
+                </button>
+              )}
             </div>
+
+            {/* Error Message */}
             {promoError && <p className="text-xs text-red-600 font-bold pr-3">{promoError}</p>}
-            {promoApplied && (
-              <p className="text-xs text-green-700 font-bold pr-3 flex items-center gap-1">
-                <CheckCircle className="w-3.5 h-3.5" />
-                تم تطبيق خصم {discountPercent}% بنجاح!
-              </p>
+
+            {/* Success Applied Banner */}
+            {promoApplied && appliedPromoInfo && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between text-xs text-emerald-800 font-bold">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span>تم تطبيق كود الخصم ({appliedPromoInfo.code}) - {appliedPromoInfo.label}</span>
+                </div>
+                <span className="font-mono font-black text-emerald-700">-{discountAmount.toFixed(2)} ج.م</span>
+              </div>
             )}
           </section>
 
@@ -371,10 +498,10 @@ export default function CartView({ cartItems, currentUser, onUpdateQuantity, onR
                   </span>
                 </div>
 
-                {promoApplied && (
-                  <div className="flex justify-between text-green-700 text-xs font-semibold bg-green-50 p-2 rounded-lg">
-                    <span>خصم الرمز الترويجي ({discountPercent}%)</span>
-                    <span className="font-bold">- {discountAmount.toFixed(2)} ج.م</span>
+                {promoApplied && discountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-700 text-xs font-semibold bg-emerald-50 p-2 rounded-xl border border-emerald-200">
+                    <span>خصم كود الترويج ({appliedPromoInfo?.code})</span>
+                    <span className="font-mono font-black">- {discountAmount.toFixed(2)} ج.م</span>
                   </div>
                 )}
 
@@ -387,10 +514,23 @@ export default function CartView({ cartItems, currentUser, onUpdateQuantity, onR
               <button
                 id="checkout-confirm-btn"
                 onClick={handleConfirmOrder}
-                className="w-full bg-primary text-white py-4 rounded-full font-bold text-sm shadow-lg hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2"
+                className={`w-full py-4 rounded-full font-bold text-sm shadow-lg hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  currentUser
+                    ? 'bg-primary text-white'
+                    : 'bg-amber-600 hover:bg-amber-700 text-white'
+                }`}
               >
-                <span>تأكيد الطلب وشراء</span>
-                <CheckCircle className="w-5 h-5 stroke-[2.5]" />
+                {currentUser ? (
+                  <>
+                    <span>تأكيد الطلب والشراء</span>
+                    <CheckCircle className="w-5 h-5 stroke-[2.5]" />
+                  </>
+                ) : (
+                  <>
+                    <span>تسجيل الدخول أولاً لإتمام الطلب 🔒</span>
+                    <UserIcon className="w-5 h-5 stroke-[2.5]" />
+                  </>
+                )}
               </button>
             </div>
           </div>

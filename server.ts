@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { INITIAL_MENU_ITEMS, CATEGORIES, DEFAULT_RESTAURANT_INFO } from "./src/data.ts";
+import { INITIAL_MENU_ITEMS, CATEGORIES, DEFAULT_RESTAURANT_INFO, INITIAL_PROMO_CODES } from "./src/data.ts";
 
 const app = express();
 const PORT = 3000;
@@ -23,7 +23,8 @@ function loadState() {
         orders: parsed.orders || [],
         reservations: parsed.reservations || [],
         users: parsed.users || [],
-        restaurantInfo: parsed.restaurantInfo || DEFAULT_RESTAURANT_INFO
+        restaurantInfo: parsed.restaurantInfo || DEFAULT_RESTAURANT_INFO,
+        promoCodes: parsed.promoCodes || INITIAL_PROMO_CODES
       };
     }
   } catch (err) {
@@ -35,7 +36,8 @@ function loadState() {
     orders: [],
     reservations: [],
     users: [],
-    restaurantInfo: DEFAULT_RESTAURANT_INFO
+    restaurantInfo: DEFAULT_RESTAURANT_INFO,
+    promoCodes: INITIAL_PROMO_CODES
   };
 }
 
@@ -55,13 +57,14 @@ app.get("/api/state", (req, res) => {
 });
 
 app.post("/api/state", (req, res) => {
-  const { menuItems, categories, orders, reservations, users, restaurantInfo } = req.body;
+  const { menuItems, categories, orders, reservations, users, restaurantInfo, promoCodes } = req.body;
   if (menuItems) currentState.menuItems = menuItems;
   if (categories) currentState.categories = categories;
   if (orders) currentState.orders = orders;
   if (reservations) currentState.reservations = reservations;
   if (users) currentState.users = users;
   if (restaurantInfo) currentState.restaurantInfo = restaurantInfo;
+  if (promoCodes) currentState.promoCodes = promoCodes;
   
   saveState(currentState);
   res.json({ success: true, state: currentState });

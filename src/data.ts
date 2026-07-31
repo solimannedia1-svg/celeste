@@ -1,4 +1,4 @@
-import { MenuItem, RestaurantInfo } from "./types";
+import { MenuItem, RestaurantInfo, PromoCode } from "./types";
 
 export const DEFAULT_RESTAURANT_INFO: RestaurantInfo = {
   name: "مطعم ومقهى سيلست Celeste",
@@ -7,6 +7,43 @@ export const DEFAULT_RESTAURANT_INFO: RestaurantInfo = {
   phone: "01012345678",
   workingHours: "من 8:00 ص إلى 4:00 بعد منتصف الليل",
 };
+
+export const INITIAL_PROMO_CODES: PromoCode[] = [
+  {
+    id: 'promo_welcome10',
+    code: 'WELCOME10',
+    type: 'percentage',
+    value: 10,
+    minOrderValue: 100,
+    isActive: true,
+    expiryDate: '2026-12-31',
+    usageCount: 15,
+    maxUses: 100
+  },
+  {
+    id: 'promo_celeste50',
+    code: 'CELESTE50',
+    type: 'fixed',
+    value: 50,
+    minOrderValue: 200,
+    isActive: true,
+    expiryDate: '2026-12-31',
+    usageCount: 8,
+    maxUses: 50
+  },
+  {
+    id: 'promo_vip20',
+    code: 'VIP20',
+    type: 'percentage',
+    value: 20,
+    minOrderValue: 300,
+    maxDiscount: 100,
+    isActive: true,
+    expiryDate: '2026-12-31',
+    usageCount: 5,
+    maxUses: 20
+  }
+];
 
 export const INITIAL_MENU_ITEMS: MenuItem[] = [
   {

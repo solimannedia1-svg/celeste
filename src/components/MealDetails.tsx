@@ -14,10 +14,56 @@ export default function MealDetails({ item, onBack, onAddToCart }: MealDetailsPr
   const [breadType, setBreadType] = useState<'brioche' | 'oat'>('brioche');
   const [isFavorite, setIsFavorite] = useState(false);
   
-  // Custom side dish state (multiple choices allowed)
+  // Helper function to check if a side dish is pasta
+  const isPastaSideDish = (name: string): boolean => {
+    if (!name) return false;
+    const normalized = name.trim().toLowerCase();
+    return (
+      normalized.includes('مكر') ||   // matches مكرونة, مكرونه, مكروة, مكروه, مكروا, مكروني
+      normalized.includes('باستا') ||
+      normalized.includes('pasta') ||
+      normalized.includes('spaghe') ||
+      normalized.includes('macaro') ||
+      normalized.includes('نجرسكو') ||
+      normalized.includes('بشاميل') ||
+      normalized.includes('الفريدو') ||
+      normalized.includes('صوص')     // matches وايت صوص, ريد صوص
+    );
+  };
+
+  // Custom side dish state (multiple choices allowed: 1 pasta OR up to 2 non-pasta dishes)
   const [selectedSideDishes, setSelectedSideDishes] = useState<string[]>(
     item.sideDishOptions && item.sideDishOptions.length > 0 ? [item.sideDishOptions[0]] : []
   );
+
+  const handleSideDishToggle = (option: string) => {
+    const isSelected = selectedSideDishes.includes(option);
+    const isPasta = isPastaSideDish(option);
+
+    if (isSelected) {
+      setSelectedSideDishes(prev => prev.filter(x => x !== option));
+    } else {
+      if (isPasta) {
+        // Pasta is exclusive: replaces all current choices with this single pasta option
+        setSelectedSideDishes([option]);
+      } else {
+        // Non-pasta dish
+        const hasPasta = selectedSideDishes.some(x => isPastaSideDish(x));
+        if (hasPasta) {
+          // Replace pasta with this non-pasta choice
+          setSelectedSideDishes([option]);
+        } else {
+          // Currently selecting non-pasta dishes: max 2 allowed
+          if (selectedSideDishes.length >= 2) {
+            // Replace oldest non-pasta dish to maintain max 2
+            setSelectedSideDishes(prev => [prev[1], option]);
+          } else {
+            setSelectedSideDishes(prev => [...prev, option]);
+          }
+        }
+      }
+    }
+  };
 
   // Custom extras selection
   const [selectedExtras, setSelectedExtras] = useState<{ id: string; name: string; price: number }[]>([]);
@@ -146,33 +192,51 @@ export default function MealDetails({ item, onBack, onAddToCart }: MealDetailsPr
       {item.sideDishOptions && item.sideDishOptions.length > 0 && (
         <section className="space-y-3">
           <div className="flex justify-between items-center">
-            <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-full">يمكنك اختيار أكثر من طبق</span>
+            {selectedSideDishes.some(x => isPastaSideDish(x)) ? (
+              <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-200">
+                المكرونة: خيار 1 فقط
+              </span>
+            ) : selectedSideDishes.length === 2 ? (
+              <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                تم اختيار 2 من 2 طبق جانبي
+              </span>
+            ) : selectedSideDishes.length === 1 ? (
+              <span className="text-[10px] text-blue-800 font-bold bg-blue-100 px-2.5 py-0.5 rounded-full border border-blue-200">
+                تم اختيار 1 من 2 أطباق جانبية
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-600 font-bold bg-slate-100 px-2 py-0.5 rounded-full">
+                طبقين جانبيين أو طبق مكرونة واحد
+              </span>
+            )}
             <h3 className="font-label-lg text-sm text-secondary font-bold text-right">الأطباق الجانبية المفضلة</h3>
           </div>
           <div className="grid grid-cols-2 gap-3">
             {item.sideDishOptions.map((option) => {
               const isSelected = selectedSideDishes.includes(option);
+              const isPastaOption = isPastaSideDish(option);
               return (
                 <button
                   key={option}
                   id={`side-dish-${option}`}
-                  onClick={() => {
-                    if (isSelected) {
-                      setSelectedSideDishes(selectedSideDishes.filter(x => x !== option));
-                    } else {
-                      setSelectedSideDishes([...selectedSideDishes, option]);
-                    }
-                  }}
-                  className={`flex items-center justify-between p-3.5 rounded-xl border-2 transition-all text-right ${
+                  onClick={() => handleSideDishToggle(option)}
+                  className={`flex items-center justify-between p-3.5 rounded-xl border-2 transition-all text-right relative ${
                     isSelected
-                      ? 'border-primary bg-primary/5'
-                      : 'border-outline-variant/40 hover:border-primary/50'
+                      ? 'border-primary bg-primary/5 shadow-sm'
+                      : 'border-outline-variant/40 hover:border-primary/50 bg-white'
                   }`}
                 >
-                  <span className={`font-bold text-sm ${isSelected ? 'text-primary' : 'text-on-surface-variant'}`}>
-                    {option}
-                  </span>
-                  <span className={`w-4.5 h-4.5 rounded-md border flex items-center justify-center transition-all ${
+                  <div className="flex flex-col text-right">
+                    <span className={`font-bold text-sm ${isSelected ? 'text-primary' : 'text-on-surface-variant'}`}>
+                      {option}
+                    </span>
+                    {isPastaOption && (
+                      <span className="text-[9px] font-semibold text-amber-700">
+                        (مكرونة - خيار واحد فقط)
+                      </span>
+                    )}
+                  </div>
+                  <span className={`w-4.5 h-4.5 rounded-md border flex items-center justify-center transition-all shrink-0 ${
                     isSelected ? 'border-primary bg-primary' : 'border-outline-variant'
                   }`}>
                     {isSelected && <Check className="w-3 h-3 text-white" />}

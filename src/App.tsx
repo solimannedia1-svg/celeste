@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Tab, MenuItem, CartItem, Reservation, Order, User, RestaurantInfo } from './types';
-import { INITIAL_MENU_ITEMS, CATEGORIES, DEFAULT_RESTAURANT_INFO } from './data';
+import { Tab, MenuItem, CartItem, Reservation, Order, User, RestaurantInfo, PromoCode } from './types';
+import { INITIAL_MENU_ITEMS, CATEGORIES, DEFAULT_RESTAURANT_INFO, INITIAL_PROMO_CODES } from './data';
 import BottomNav from './components/BottomNav';
 import TableBooking from './components/TableBooking';
 import MenuList from './components/MenuList';
@@ -61,6 +61,10 @@ export default function App() {
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo>(() => {
     const saved = localStorage.getItem('celeste_restaurant_info');
     return saved ? JSON.parse(saved) : DEFAULT_RESTAURANT_INFO;
+  });
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>(() => {
+    const saved = localStorage.getItem('celeste_promo_codes');
+    return saved ? JSON.parse(saved) : INITIAL_PROMO_CODES;
   });
 
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -152,6 +156,17 @@ export default function App() {
   }, [reservations, isLoaded]);
 
   useEffect(() => {
+    localStorage.setItem('celeste_promo_codes', JSON.stringify(promoCodes));
+    if (isLoaded) {
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promoCodes })
+      }).catch(err => console.warn('Sync promoCodes notice:', err?.message || err));
+    }
+  }, [promoCodes, isLoaded]);
+
+  useEffect(() => {
     if (activeOrder) {
       localStorage.setItem('celeste_active_order', JSON.stringify(activeOrder));
     } else {
@@ -185,6 +200,9 @@ export default function App() {
         }
         if (e.key === 'celeste_users' && e.newValue) {
           setUsers(JSON.parse(e.newValue));
+        }
+        if (e.key === 'celeste_promo_codes' && e.newValue) {
+          setPromoCodes(JSON.parse(e.newValue));
         }
         if (e.key === 'celeste_active_order') {
           setActiveOrder(e.newValue ? JSON.parse(e.newValue) : null);
@@ -240,6 +258,10 @@ export default function App() {
           if (data.restaurantInfo) {
             setRestaurantInfo(data.restaurantInfo);
             localStorage.setItem('celeste_restaurant_info', JSON.stringify(data.restaurantInfo));
+          }
+          if (data.promoCodes) {
+            setPromoCodes(data.promoCodes);
+            localStorage.setItem('celeste_promo_codes', JSON.stringify(data.promoCodes));
           }
         }
       } catch (err) {
@@ -357,14 +379,44 @@ export default function App() {
   const handleCheckout = (order: Order) => {
     setActiveOrder(order);
     setOrders(prev => [order, ...prev]);
+    if (order.promoCode) {
+      setPromoCodes(prev => prev.map(p => p.code.toUpperCase() === order.promoCode?.toUpperCase() ? { ...p, usageCount: (p.usageCount || 0) + 1 } : p));
+    }
     setCartItems([]); // Clear cart
     setActiveTab('track'); // Switch to tracking
     triggerToast(`تم إرسال طلبك ${order.id} بنجاح!`);
   };
 
   // Admin Controls State-updaters
+  const handleDeleteOrder = (orderId: string) => {
+    setOrders(prev => {
+      const updatedList = prev.filter(o => o.id !== orderId);
+      localStorage.setItem('celeste_orders', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: updatedList })
+      }).catch(err => console.error('Sync orders error:', err));
+      return updatedList;
+    });
+    if (activeOrder && activeOrder.id === orderId) {
+      setActiveOrder(null);
+      localStorage.removeItem('celeste_active_order');
+    }
+    triggerToast(`تم حذف الطلب (${orderId}) بنجاح! 🗑️`);
+  };
+
   const handleUpdateOrderStatus = (orderId: string, status: 'received' | 'preparing' | 'on_the_way' | 'delivered') => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+    setOrders(prev => {
+      const updatedList = prev.map(o => o.id === orderId ? { ...o, status } : o);
+      localStorage.setItem('celeste_orders', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: updatedList })
+      }).catch(err => console.error('Sync orders error:', err));
+      return updatedList;
+    });
     if (activeOrder && activeOrder.id === orderId) {
       setActiveOrder(prev => prev ? { ...prev, status } : null);
     }
@@ -543,6 +595,69 @@ export default function App() {
     triggerToast('تم تغيير حالة حساب العضو.');
   };
 
+  // Promo Code Handlers
+  const handleAddPromoCode = (promo: PromoCode) => {
+    setPromoCodes(prev => {
+      const updatedList = [promo, ...prev];
+      localStorage.setItem('celeste_promo_codes', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promoCodes: updatedList })
+      }).catch(err => console.error('Sync promo codes error:', err));
+      return updatedList;
+    });
+    triggerToast(`تمت إضافة كود الخصم (${promo.code}) بنجاح! 🏷️`);
+  };
+
+  const handleUpdatePromoCode = (updatedPromo: PromoCode) => {
+    setPromoCodes(prev => {
+      const updatedList = prev.map(p => p.id === updatedPromo.id ? updatedPromo : p);
+      localStorage.setItem('celeste_promo_codes', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promoCodes: updatedList })
+      }).catch(err => console.error('Sync promo codes error:', err));
+      return updatedList;
+    });
+    triggerToast(`تم تحديث بيانات كود الخصم (${updatedPromo.code}) بنجاح! ✨`);
+  };
+
+  const handleDeletePromoCode = (promoId: string) => {
+    setPromoCodes(prev => {
+      const updatedList = prev.filter(p => p.id !== promoId);
+      localStorage.setItem('celeste_promo_codes', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promoCodes: updatedList })
+      }).catch(err => console.error('Sync promo codes error:', err));
+      return updatedList;
+    });
+    triggerToast('تم حذف كود الخصم بنجاح.');
+  };
+
+  const handleTogglePromoCodeStatus = (promoId: string) => {
+    setPromoCodes(prev => {
+      const updatedList = prev.map(p => {
+        if (p.id === promoId) {
+          const updated = { ...p, isActive: !p.isActive };
+          triggerToast(`تم ${updated.isActive ? 'تفعيل' : 'إيقاف'} كود الخصم (${updated.code})`);
+          return updated;
+        }
+        return p;
+      });
+      localStorage.setItem('celeste_promo_codes', JSON.stringify(updatedList));
+      fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promoCodes: updatedList })
+      }).catch(err => console.error('Sync promo codes error:', err));
+      return updatedList;
+    });
+  };
+
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   // Orders and reservations scoped to current user or active guest
@@ -684,7 +799,13 @@ export default function App() {
         categories={categories}
         restaurantInfo={restaurantInfo}
         currentUser={currentUser}
+        promoCodes={promoCodes}
+        onAddPromoCode={handleAddPromoCode}
+        onUpdatePromoCode={handleUpdatePromoCode}
+        onDeletePromoCode={handleDeletePromoCode}
+        onTogglePromoCodeStatus={handleTogglePromoCodeStatus}
         onUpdateOrderStatus={handleUpdateOrderStatus}
+        onDeleteOrder={handleDeleteOrder}
         onUpdateReservationStatus={handleUpdateReservationStatus}
         onUpdateMenuItem={handleUpdateMenuItem}
         onClose={() => {
@@ -704,8 +825,14 @@ export default function App() {
         categories={categories}
         users={users}
         restaurantInfo={restaurantInfo}
+        promoCodes={promoCodes}
+        onAddPromoCode={handleAddPromoCode}
+        onUpdatePromoCode={handleUpdatePromoCode}
+        onDeletePromoCode={handleDeletePromoCode}
+        onTogglePromoCodeStatus={handleTogglePromoCodeStatus}
         onUpdateRestaurantInfo={handleUpdateRestaurantInfo}
         onUpdateOrderStatus={handleUpdateOrderStatus}
+        onDeleteOrder={handleDeleteOrder}
         onUpdateReservationStatus={handleUpdateReservationStatus}
         onUpdateMenuItem={handleUpdateMenuItem}
         onAddMenuItem={handleAddMenuItem}
@@ -783,9 +910,11 @@ export default function App() {
                 <CartView
                   cartItems={cartItems}
                   currentUser={currentUser}
+                  promoCodes={promoCodes}
                   onUpdateQuantity={handleUpdateQuantity}
                   onRemoveItem={handleRemoveItem}
                   onCheckout={handleCheckout}
+                  onOpenAuth={() => setIsAuthModalOpen(true)}
                 />
               )}
 
