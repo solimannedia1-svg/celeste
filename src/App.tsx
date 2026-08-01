@@ -216,58 +216,109 @@ export default function App() {
     return () => window.removeEventListener('storage', handleStorageEvent);
   }, []);
 
-  // Fetch the latest global state from the server on mount, window focus, or tab visibility change
+  // Fetch the latest global state from the server on mount, window focus, tab visibility change, and active polling interval
   useEffect(() => {
+    let isMounted = true;
+
     const syncWithServerAndLocal = async () => {
       try {
         const res = await fetch('/api/state');
         if (res.ok) {
           const data = await res.json();
+          if (!isMounted) return;
+
           if (data.menuItems) {
-            setMenuItems(data.menuItems);
-            localStorage.setItem('celeste_menu_items', JSON.stringify(data.menuItems));
+            setMenuItems(prev => {
+              const strNew = JSON.stringify(data.menuItems);
+              if (JSON.stringify(prev) !== strNew) {
+                localStorage.setItem('celeste_menu_items', strNew);
+                return data.menuItems;
+              }
+              return prev;
+            });
           }
           if (data.categories) {
-            setCategories(data.categories);
-            localStorage.setItem('celeste_categories', JSON.stringify(data.categories));
+            setCategories(prev => {
+              const strNew = JSON.stringify(data.categories);
+              if (JSON.stringify(prev) !== strNew) {
+                localStorage.setItem('celeste_categories', strNew);
+                return data.categories;
+              }
+              return prev;
+            });
           }
           if (data.users) {
-            setUsers(data.users);
-            localStorage.setItem('celeste_users', JSON.stringify(data.users));
+            setUsers(prev => {
+              const strNew = JSON.stringify(data.users);
+              if (JSON.stringify(prev) !== strNew) {
+                localStorage.setItem('celeste_users', strNew);
+                return data.users;
+              }
+              return prev;
+            });
           }
           if (data.orders) {
-            setOrders(data.orders);
-            localStorage.setItem('celeste_orders', JSON.stringify(data.orders));
-            
-            // Sync active order if it is tracked
-            const savedActiveOrder = localStorage.getItem('celeste_active_order');
-            if (savedActiveOrder) {
-              setActiveOrder(JSON.parse(savedActiveOrder));
-            } else {
-              setActiveOrder((currentActive) => {
-                if (!currentActive) return null;
-                const match = data.orders.find((o: Order) => o.id === currentActive.id);
-                return match ? match : currentActive;
-              });
-            }
+            setOrders(prev => {
+              const strNew = JSON.stringify(data.orders);
+              if (JSON.stringify(prev) !== strNew) {
+                localStorage.setItem('celeste_orders', strNew);
+                return data.orders;
+              }
+              return prev;
+            });
+
+            // Keep active order updated live
+            setActiveOrder((currentActive) => {
+              const savedActiveStr = localStorage.getItem('celeste_active_order');
+              const targetOrder = savedActiveStr ? JSON.parse(savedActiveStr) : currentActive;
+              if (!targetOrder) return null;
+              const match = data.orders.find((o: Order) => o.id === targetOrder.id);
+              if (match) {
+                if (JSON.stringify(match) !== JSON.stringify(currentActive)) {
+                  localStorage.setItem('celeste_active_order', JSON.stringify(match));
+                  return match;
+                }
+              }
+              return currentActive;
+            });
           }
           if (data.reservations) {
-            setReservations(data.reservations);
-            localStorage.setItem('celeste_reservations', JSON.stringify(data.reservations));
+            setReservations(prev => {
+              const strNew = JSON.stringify(data.reservations);
+              if (JSON.stringify(prev) !== strNew) {
+                localStorage.setItem('celeste_reservations', strNew);
+                return data.reservations;
+              }
+              return prev;
+            });
           }
           if (data.restaurantInfo) {
-            setRestaurantInfo(data.restaurantInfo);
-            localStorage.setItem('celeste_restaurant_info', JSON.stringify(data.restaurantInfo));
+            setRestaurantInfo(prev => {
+              const strNew = JSON.stringify(data.restaurantInfo);
+              if (JSON.stringify(prev) !== strNew) {
+                localStorage.setItem('celeste_restaurant_info', strNew);
+                return data.restaurantInfo;
+              }
+              return prev;
+            });
           }
           if (data.promoCodes) {
-            setPromoCodes(data.promoCodes);
-            localStorage.setItem('celeste_promo_codes', JSON.stringify(data.promoCodes));
+            setPromoCodes(prev => {
+              const strNew = JSON.stringify(data.promoCodes);
+              if (JSON.stringify(prev) !== strNew) {
+                localStorage.setItem('celeste_promo_codes', strNew);
+                return data.promoCodes;
+              }
+              return prev;
+            });
           }
         }
       } catch (err) {
         console.error('Error syncing state with backend server:', err);
       } finally {
-        setIsLoaded(true);
+        if (isMounted) {
+          setIsLoaded(true);
+        }
       }
     };
 
@@ -277,7 +328,14 @@ export default function App() {
     // Perform initial synchronization
     syncWithServerAndLocal();
 
+    // Fast Polling interval (every 2.5 seconds) to ensure real-time status updates on mobile (AAB/APK) and web
+    const pollTimer = setInterval(() => {
+      syncWithServerAndLocal();
+    }, 2500);
+
     return () => {
+      isMounted = false;
+      clearInterval(pollTimer);
       window.removeEventListener('focus', syncWithServerAndLocal);
       document.removeEventListener('visibilitychange', syncWithServerAndLocal);
     };
