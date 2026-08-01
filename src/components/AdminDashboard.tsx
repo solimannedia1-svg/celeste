@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MenuItem, CartItem, Reservation, Order, User, RestaurantInfo, PromoCode } from '../types';
 import PromoManagement from './PromoManagement';
+import { uploadImageToStorage } from '../services/firestore';
 import { 
   TrendingUp, 
   Users, 
@@ -38,6 +39,7 @@ import {
   FileText,
   Printer,
   ShieldCheck,
+  Upload,
   Key,
   Ticket
 } from 'lucide-react';
@@ -472,9 +474,25 @@ export default function AdminDashboard({
     printWindow.document.close();
   };
   const [isAddingNew, setIsAddingNew] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   
   // Custom side dishes (6 separate fields)
   const [sideDishes, setSideDishes] = useState<string[]>(['', '', '', '', '', '']);
+  
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingImage(true);
+    try {
+      const downloadUrl = await uploadImageToStorage(file);
+      setFormData(prev => ({ ...prev, image: downloadUrl }));
+      alert('تم رفع الصورة بنجاح وتوليد رابط التخزين السحابي Firebase Storage! ☁️');
+    } catch (err: any) {
+      alert('حدث خطأ أثناء رفع الصورة: ' + (err?.message || err));
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
   
   // Item form data
   const [formData, setFormData] = useState<Partial<MenuItem>>({
@@ -1988,16 +2006,34 @@ export default function AdminDashboard({
                     />
                   </div>
 
-                  {/* Image URL */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-400 block">رابط صورة الصنف</label>
-                    <input
-                      type="text"
-                      value={formData.image || ''}
-                      onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                      className="w-full p-2.5 rounded-xl border border-slate-200 text-xs focus:ring-1 focus:ring-primary focus:border-primary text-left"
-                      placeholder="URL"
-                    />
+                  {/* Image URL & Upload to Firebase Storage */}
+                  <div className="space-y-1.5 text-right">
+                    <label className="text-xs font-bold text-slate-500 block">صورة الصنف (رفع إلى Firebase Storage أو استخدام رابط)</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={formData.image || ''}
+                        onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                        className="w-full p-2.5 rounded-xl border border-slate-200 text-xs focus:ring-1 focus:ring-primary focus:border-primary text-left"
+                        placeholder="https://..."
+                      />
+                      <label className={`px-3 py-2.5 rounded-xl font-bold text-xs border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-all cursor-pointer flex items-center gap-1 shrink-0 ${isUploadingImage ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <Upload className="w-4 h-4" />
+                        <span>{isUploadingImage ? 'جاري الرفع...' : 'رفع صورة'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                    {formData.image && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <img src={formData.image} alt="معاينة" className="w-8 h-8 rounded-lg object-cover border border-slate-200" referrerPolicy="no-referrer" />
+                        <span className="text-[10px] text-slate-400 truncate max-w-[200px] dir-ltr">{formData.image}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Side Dishes Options (6 inputs) */}

@@ -5,7 +5,8 @@
 
 import { useState, useEffect } from 'react';
 import { Tab, MenuItem, CartItem, Reservation, Order, User, RestaurantInfo, PromoCode } from './types';
-import { INITIAL_MENU_ITEMS, CATEGORIES, DEFAULT_RESTAURANT_INFO, INITIAL_PROMO_CODES } from './data';
+import { DEFAULT_RESTAURANT_INFO } from './data';
+import * as firestore from './services/firestore';
 import BottomNav from './components/BottomNav';
 import TableBooking from './components/TableBooking';
 import MenuList from './components/MenuList';
@@ -28,44 +29,20 @@ export default function App() {
   const [isFavorite, setIsFavorite] = useState(false);
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [activeOrder, setActiveOrder] = useState<Order | null>(() => {
-    const saved = localStorage.getItem('celeste_active_order');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [reservations, setReservations] = useState<Reservation[]>(() => {
-    const saved = localStorage.getItem('celeste_reservations');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
   
-  // Dynamic application state shared between Customer & Admin views
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
-    const saved = localStorage.getItem('celeste_menu_items');
-    return saved ? JSON.parse(saved) : INITIAL_MENU_ITEMS;
-  });
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('celeste_orders');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [categories, setCategories] = useState<string[]>(() => {
-    const saved = localStorage.getItem('celeste_categories');
-    return saved ? JSON.parse(saved) : CATEGORIES;
-  });
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('celeste_users');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Dynamic application state loaded directly from Firebase Firestore in real-time
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('celeste_current_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo>(() => {
-    const saved = localStorage.getItem('celeste_restaurant_info');
-    return saved ? JSON.parse(saved) : DEFAULT_RESTAURANT_INFO;
-  });
-  const [promoCodes, setPromoCodes] = useState<PromoCode[]>(() => {
-    const saved = localStorage.getItem('celeste_promo_codes');
-    return saved ? JSON.parse(saved) : INITIAL_PROMO_CODES;
-  });
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo>(DEFAULT_RESTAURANT_INFO);
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
 
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [isSupervisorMode, setIsSupervisorMode] = useState(false);
@@ -73,40 +50,98 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [forceWelcomeModal, setForceWelcomeModal] = useState<boolean | undefined>(undefined);
 
-  // Sync state to server when it changes (only after initial load has finished)
+  // Firestore Real-Time Subscriptions (onSnapshot)
   useEffect(() => {
-    localStorage.setItem('celeste_restaurant_info', JSON.stringify(restaurantInfo));
-    if (isLoaded) {
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ restaurantInfo })
-      }).catch(err => console.warn('Sync restaurantInfo notice:', err?.message || err));
-    }
-  }, [restaurantInfo, isLoaded]);
+    let isMounted = true;
 
-  useEffect(() => {
-    localStorage.setItem('celeste_categories', JSON.stringify(categories));
-    if (isLoaded) {
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categories })
-      }).catch(err => console.warn('Sync categories notice:', err?.message || err));
-    }
-  }, [categories, isLoaded]);
+    // First seed database if Firestore collections are empty
+    firestore.seedInitialDataIfEmpty().catch(err => {
+      console.warn('Initial seed notice:', err);
+    });
 
-  useEffect(() => {
-    localStorage.setItem('celeste_users', JSON.stringify(users));
-    if (isLoaded) {
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users })
-      }).catch(err => console.warn('Sync users notice:', err?.message || err));
-    }
-  }, [users, isLoaded]);
+    // Real-time listener for Menu Items
+    const unsubMenu = firestore.subscribeToMenuItems((items) => {
+      if (!isMounted) return;
+      setMenuItems(items);
+      setIsLoaded(true);
+    });
 
+    // Real-time listener for Categories
+    const unsubCategories = firestore.subscribeToCategories((cats) => {
+      if (!isMounted) return;
+      setCategories(cats);
+    });
+
+    // Real-time listener for Orders
+    const unsubOrders = firestore.subscribeToOrders((ordersList) => {
+      if (!isMounted) return;
+      setOrders(ordersList);
+
+      // Keep active order updated live when status or details change in Firestore
+      setActiveOrder((current) => {
+        const savedId = localStorage.getItem('celeste_active_order_id');
+        const targetId = current?.id || savedId;
+        if (!targetId) return null;
+        const match = ordersList.find(o => o.id === targetId);
+        return match || current;
+      });
+    });
+
+    // Real-time listener for Reservations
+    const unsubReservations = firestore.subscribeToReservations((resList) => {
+      if (!isMounted) return;
+      setReservations(resList);
+    });
+
+    // Real-time listener for Users
+    const unsubUsers = firestore.subscribeToUsers((usersList) => {
+      if (!isMounted) return;
+      setUsers(usersList);
+      
+      // Update currentUser session if user details change in Firestore
+      setCurrentUser((current) => {
+        if (!current) return null;
+        const match = usersList.find(u => u.id === current.id);
+        if (match) {
+          localStorage.setItem('celeste_current_user', JSON.stringify(match));
+          return match;
+        }
+        return current;
+      });
+    });
+
+    // Real-time listener for Promo Codes
+    const unsubPromos = firestore.subscribeToPromoCodes((promosList) => {
+      if (!isMounted) return;
+      setPromoCodes(promosList);
+    });
+
+    // Real-time listener for Restaurant Info Settings
+    const unsubInfo = firestore.subscribeToRestaurantInfo((info) => {
+      if (!isMounted) return;
+      setRestaurantInfo(info);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubSubscript(unsubMenu);
+      unsubSubscript(unsubCategories);
+      unsubSubscript(unsubOrders);
+      unsubSubscript(unsubReservations);
+      unsubSubscript(unsubUsers);
+      unsubSubscript(unsubPromos);
+      unsubSubscript(unsubInfo);
+    };
+  }, []);
+
+  // Helper for cleanup of unsub functions
+  const unsubSubscript = (fn: any) => {
+    if (typeof fn === 'function') {
+      try { fn(); } catch (_) {}
+    }
+  };
+
+  // Sync current user to localStorage session
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('celeste_current_user', JSON.stringify(currentUser));
@@ -115,231 +150,14 @@ export default function App() {
     }
   }, [currentUser]);
 
-  useEffect(() => {
-    localStorage.setItem('celeste_menu_items', JSON.stringify(menuItems));
-    if (isLoaded) {
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ menuItems })
-      }).catch(err => console.warn('Sync menu items notice:', err?.message || err));
-    }
-  }, [menuItems, isLoaded]);
-
-  useEffect(() => {
-    localStorage.setItem('celeste_orders', JSON.stringify(orders));
-    if (isLoaded) {
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders })
-      }).catch(err => console.warn('Sync orders notice:', err?.message || err));
-    }
-    // Keep activeOrder synchronized with any updates in the orders list
-    if (activeOrder) {
-      const currentInList = orders.find(o => o.id === activeOrder.id);
-      if (currentInList && (currentInList.status !== activeOrder.status || JSON.stringify(currentInList) !== JSON.stringify(activeOrder))) {
-        setActiveOrder(currentInList);
-      }
-    }
-  }, [orders, activeOrder, isLoaded]);
-
-  useEffect(() => {
-    localStorage.setItem('celeste_reservations', JSON.stringify(reservations));
-    if (isLoaded) {
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reservations })
-      }).catch(err => console.warn('Sync reservations notice:', err?.message || err));
-    }
-  }, [reservations, isLoaded]);
-
-  useEffect(() => {
-    localStorage.setItem('celeste_promo_codes', JSON.stringify(promoCodes));
-    if (isLoaded) {
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promoCodes })
-      }).catch(err => console.warn('Sync promoCodes notice:', err?.message || err));
-    }
-  }, [promoCodes, isLoaded]);
-
+  // Sync active order ID to localStorage
   useEffect(() => {
     if (activeOrder) {
-      localStorage.setItem('celeste_active_order', JSON.stringify(activeOrder));
+      localStorage.setItem('celeste_active_order_id', activeOrder.id);
     } else {
-      localStorage.removeItem('celeste_active_order');
+      localStorage.removeItem('celeste_active_order_id');
     }
   }, [activeOrder]);
-
-  // Synchronize state across tabs/windows in real-time using storage event
-  useEffect(() => {
-    const handleStorageEvent = (e: StorageEvent) => {
-      try {
-        if (e.key === 'celeste_orders' && e.newValue) {
-          const parsedOrders = JSON.parse(e.newValue);
-          setOrders(parsedOrders);
-          
-          // Sync client's activeOrder status from the updated orders list!
-          setActiveOrder((currentActive) => {
-            if (!currentActive) return null;
-            const match = parsedOrders.find((o: Order) => o.id === currentActive.id);
-            return match ? match : currentActive;
-          });
-        }
-        if (e.key === 'celeste_reservations' && e.newValue) {
-          setReservations(JSON.parse(e.newValue));
-        }
-        if (e.key === 'celeste_menu_items' && e.newValue) {
-          setMenuItems(JSON.parse(e.newValue));
-        }
-        if (e.key === 'celeste_categories' && e.newValue) {
-          setCategories(JSON.parse(e.newValue));
-        }
-        if (e.key === 'celeste_users' && e.newValue) {
-          setUsers(JSON.parse(e.newValue));
-        }
-        if (e.key === 'celeste_promo_codes' && e.newValue) {
-          setPromoCodes(JSON.parse(e.newValue));
-        }
-        if (e.key === 'celeste_active_order') {
-          setActiveOrder(e.newValue ? JSON.parse(e.newValue) : null);
-        }
-      } catch (err) {
-        console.error('Error parsing cross-tab storage sync data:', err);
-      }
-    };
-
-    window.addEventListener('storage', handleStorageEvent);
-    return () => window.removeEventListener('storage', handleStorageEvent);
-  }, []);
-
-  // Fetch the latest global state from the server on mount, window focus, tab visibility change, and active polling interval
-  useEffect(() => {
-    let isMounted = true;
-
-    const syncWithServerAndLocal = async () => {
-      try {
-        const res = await fetch('/api/state');
-        if (res.ok) {
-          const data = await res.json();
-          if (!isMounted) return;
-
-          if (data.menuItems) {
-            setMenuItems(prev => {
-              const strNew = JSON.stringify(data.menuItems);
-              if (JSON.stringify(prev) !== strNew) {
-                localStorage.setItem('celeste_menu_items', strNew);
-                return data.menuItems;
-              }
-              return prev;
-            });
-          }
-          if (data.categories) {
-            setCategories(prev => {
-              const strNew = JSON.stringify(data.categories);
-              if (JSON.stringify(prev) !== strNew) {
-                localStorage.setItem('celeste_categories', strNew);
-                return data.categories;
-              }
-              return prev;
-            });
-          }
-          if (data.users) {
-            setUsers(prev => {
-              const strNew = JSON.stringify(data.users);
-              if (JSON.stringify(prev) !== strNew) {
-                localStorage.setItem('celeste_users', strNew);
-                return data.users;
-              }
-              return prev;
-            });
-          }
-          if (data.orders) {
-            setOrders(prev => {
-              const strNew = JSON.stringify(data.orders);
-              if (JSON.stringify(prev) !== strNew) {
-                localStorage.setItem('celeste_orders', strNew);
-                return data.orders;
-              }
-              return prev;
-            });
-
-            // Keep active order updated live
-            setActiveOrder((currentActive) => {
-              const savedActiveStr = localStorage.getItem('celeste_active_order');
-              const targetOrder = savedActiveStr ? JSON.parse(savedActiveStr) : currentActive;
-              if (!targetOrder) return null;
-              const match = data.orders.find((o: Order) => o.id === targetOrder.id);
-              if (match) {
-                if (JSON.stringify(match) !== JSON.stringify(currentActive)) {
-                  localStorage.setItem('celeste_active_order', JSON.stringify(match));
-                  return match;
-                }
-              }
-              return currentActive;
-            });
-          }
-          if (data.reservations) {
-            setReservations(prev => {
-              const strNew = JSON.stringify(data.reservations);
-              if (JSON.stringify(prev) !== strNew) {
-                localStorage.setItem('celeste_reservations', strNew);
-                return data.reservations;
-              }
-              return prev;
-            });
-          }
-          if (data.restaurantInfo) {
-            setRestaurantInfo(prev => {
-              const strNew = JSON.stringify(data.restaurantInfo);
-              if (JSON.stringify(prev) !== strNew) {
-                localStorage.setItem('celeste_restaurant_info', strNew);
-                return data.restaurantInfo;
-              }
-              return prev;
-            });
-          }
-          if (data.promoCodes) {
-            setPromoCodes(prev => {
-              const strNew = JSON.stringify(data.promoCodes);
-              if (JSON.stringify(prev) !== strNew) {
-                localStorage.setItem('celeste_promo_codes', strNew);
-                return data.promoCodes;
-              }
-              return prev;
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Error syncing state with backend server:', err);
-      } finally {
-        if (isMounted) {
-          setIsLoaded(true);
-        }
-      }
-    };
-
-    window.addEventListener('focus', syncWithServerAndLocal);
-    document.addEventListener('visibilitychange', syncWithServerAndLocal);
-    
-    // Perform initial synchronization
-    syncWithServerAndLocal();
-
-    // Fast Polling interval (every 2.5 seconds) to ensure real-time status updates on mobile (AAB/APK) and web
-    const pollTimer = setInterval(() => {
-      syncWithServerAndLocal();
-    }, 2500);
-
-    return () => {
-      isMounted = false;
-      clearInterval(pollTimer);
-      window.removeEventListener('focus', syncWithServerAndLocal);
-      document.removeEventListener('visibilitychange', syncWithServerAndLocal);
-    };
-  }, []);
 
   // Listen to hash change to support direct URLs like #/admin or #/supervisor
   useEffect(() => {
@@ -429,112 +247,102 @@ export default function App() {
     }
   };
 
-  const handleAddReservation = (reservation: Reservation) => {
-    setReservations(prev => [reservation, ...prev]);
+  const handleAddReservation = async (reservation: Reservation) => {
+    await firestore.addReservation(reservation);
     triggerToast(`تم إرسال حجز الطاولة بنجاح! رقم الحجز: ${reservation.id}`);
   };
 
-  const handleCheckout = (order: Order) => {
+  const handleCheckout = async (order: Order) => {
     setActiveOrder(order);
-    setOrders(prev => [order, ...prev]);
+    localStorage.setItem('celeste_active_order_id', order.id);
+    await firestore.addOrder(order);
+
     if (order.promoCode) {
-      setPromoCodes(prev => prev.map(p => p.code.toUpperCase() === order.promoCode?.toUpperCase() ? { ...p, usageCount: (p.usageCount || 0) + 1 } : p));
+      const match = promoCodes.find(p => p.code.toUpperCase() === order.promoCode?.toUpperCase());
+      if (match) {
+        await firestore.updatePromoCode({
+          ...match,
+          usageCount: (match.usageCount || 0) + 1
+        });
+      }
     }
     setCartItems([]); // Clear cart
     setActiveTab('track'); // Switch to tracking
     triggerToast(`تم إرسال طلبك ${order.id} بنجاح!`);
   };
 
-  // Admin Controls State-updaters
-  const handleDeleteOrder = (orderId: string) => {
-    setOrders(prev => {
-      const updatedList = prev.filter(o => o.id !== orderId);
-      localStorage.setItem('celeste_orders', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: updatedList })
-      }).catch(err => console.error('Sync orders error:', err));
-      return updatedList;
-    });
+  // Admin Controls Firestore Updaters
+  const handleDeleteOrder = async (orderId: string) => {
+    await firestore.deleteOrder(orderId);
     if (activeOrder && activeOrder.id === orderId) {
       setActiveOrder(null);
-      localStorage.removeItem('celeste_active_order');
+      localStorage.removeItem('celeste_active_order_id');
     }
     triggerToast(`تم حذف الطلب (${orderId}) بنجاح! 🗑️`);
   };
 
-  const handleUpdateOrderStatus = (orderId: string, status: 'received' | 'preparing' | 'on_the_way' | 'delivered') => {
-    setOrders(prev => {
-      const updatedList = prev.map(o => o.id === orderId ? { ...o, status } : o);
-      localStorage.setItem('celeste_orders', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: updatedList })
-      }).catch(err => console.error('Sync orders error:', err));
-      return updatedList;
-    });
+  const handleUpdateOrderStatus = async (orderId: string, status: 'received' | 'preparing' | 'on_the_way' | 'delivered') => {
+    await firestore.updateOrderStatus(orderId, status);
     if (activeOrder && activeOrder.id === orderId) {
       setActiveOrder(prev => prev ? { ...prev, status } : null);
     }
     triggerToast(`تم تحديث حالة الطلب ${orderId} بنجاح!`);
   };
 
-  const handleUpdateReservationStatus = (resId: string, status: 'confirmed' | 'cancelled') => {
-    setReservations(prev => prev.map(r => r.id === resId ? { ...r, status } : r));
+  const handleUpdateReservationStatus = async (resId: string, status: 'confirmed' | 'cancelled') => {
+    await firestore.updateReservationStatus(resId, status);
     triggerToast(status === 'confirmed' ? `تم تأكيد وقبول الحجز ${resId}!` : `تم إلغاء الحجز ${resId}`);
   };
 
-  const handleUpdateMenuItem = (updatedItem: MenuItem) => {
-    setMenuItems(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
+  const handleUpdateMenuItem = async (updatedItem: MenuItem) => {
+    await firestore.updateMenuItem(updatedItem);
     triggerToast(`تم تعديل الصنف ${updatedItem.name} بنجاح!`);
   };
 
-  const handleAddMenuItem = (newItem: MenuItem) => {
-    setMenuItems(prev => [newItem, ...prev]);
+  const handleAddMenuItem = async (newItem: MenuItem) => {
+    await firestore.addMenuItem(newItem);
     triggerToast(`تمت إضافة الصنف ${newItem.name} بنجاح!`);
   };
 
-  const handleDeleteMenuItem = (itemId: string) => {
-    setMenuItems(prev => prev.filter(item => item.id !== itemId));
+  const handleDeleteMenuItem = async (itemId: string) => {
+    await firestore.deleteMenuItem(itemId);
     triggerToast(`تم حذف الصنف بنجاح!`);
   };
 
-  const handleAddCategory = (categoryName: string) => {
+  const handleAddCategory = async (categoryName: string) => {
     const trimmed = categoryName.trim();
     if (!trimmed) return;
     if (categories.includes(trimmed)) {
       triggerToast('هذا التصنيف موجود بالفعل!');
       return;
     }
-    setCategories(prev => [...prev, trimmed]);
+    await firestore.addCategory(trimmed);
     triggerToast(`تمت إضافة التصنيف "${trimmed}" بنجاح!`);
   };
 
-  const handleDeleteCategory = (categoryName: string) => {
-    setCategories(prev => prev.filter(c => c !== categoryName));
+  const handleDeleteCategory = async (categoryName: string) => {
+    await firestore.deleteCategory(categoryName);
     triggerToast(`تم حذف التصنيف "${categoryName}" بنجاح.`);
   };
 
-  // User Management state updaters
-  const handleRegisterUser = (newUser: User) => {
-    setUsers(prev => [newUser, ...prev]);
+  // User Management Firestore Updaters
+  const handleRegisterUser = async (newUser: User) => {
+    await firestore.addUser(newUser);
     setCurrentUser(newUser);
 
     // Link any guest order matching phone to this new user
     const matchingGuestOrder = orders.find(o => !o.userId && o.customerPhone === newUser.phone);
     if (matchingGuestOrder) {
       const updatedOrder = { ...matchingGuestOrder, userId: newUser.id };
+      await firestore.addOrder(updatedOrder);
       setActiveOrder(updatedOrder);
-      setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
     } else {
       const userOrders = orders.filter(o => o.userId === newUser.id);
       if (userOrders.length > 0) {
         setActiveOrder(userOrders[0]);
       } else {
         setActiveOrder(null);
-        localStorage.removeItem('celeste_active_order');
+        localStorage.removeItem('celeste_active_order_id');
       }
     }
 
@@ -548,7 +356,7 @@ export default function App() {
       setActiveOrder(userOrders[0]);
     } else {
       setActiveOrder(null);
-      localStorage.removeItem('celeste_active_order');
+      localStorage.removeItem('celeste_active_order_id');
     }
 
     if (user.role === 'supervisor') {
@@ -563,69 +371,32 @@ export default function App() {
   const handleLogoutUser = () => {
     setCurrentUser(null);
     setActiveOrder(null);
-    localStorage.removeItem('celeste_active_order');
+    localStorage.removeItem('celeste_current_user');
+    localStorage.removeItem('celeste_active_order_id');
     triggerToast('تم تسجيل الخروج بنجاح.');
   };
 
-  const handleUpdateProfileUser = (updatedUser: User) => {
-    setUsers(prev => {
-      const updatedList = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
-      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users: updatedList })
-      }).catch(err => console.error('Sync users error:', err));
-      return updatedList;
-    });
+  const handleUpdateProfileUser = async (updatedUser: User) => {
+    await firestore.updateUser(updatedUser);
     setCurrentUser(updatedUser);
-    localStorage.setItem('celeste_current_user', JSON.stringify(updatedUser));
     triggerToast('تم تحديث بيانات ملفك الشخصي بنجاح!');
   };
 
-  const handleAddUserAdmin = (newUser: User) => {
-    setUsers(prev => {
-      const updatedList = [newUser, ...prev];
-      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users: updatedList })
-      }).catch(err => console.error('Sync users error:', err));
-      return updatedList;
-    });
+  const handleAddUserAdmin = async (newUser: User) => {
+    await firestore.addUser(newUser);
     triggerToast(`تمت إضافة العضو ${newUser.name} بنجاح!`);
   };
 
-  const handleUpdateUserAdmin = (updatedUser: User) => {
-    setUsers(prev => {
-      const updatedList = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
-      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users: updatedList })
-      }).catch(err => console.error('Sync users error:', err));
-      return updatedList;
-    });
+  const handleUpdateUserAdmin = async (updatedUser: User) => {
+    await firestore.updateUser(updatedUser);
     if (currentUser && currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
-      localStorage.setItem('celeste_current_user', JSON.stringify(updatedUser));
     }
     triggerToast(`تم تحديث بيانات العضو ${updatedUser.name} بنجاح!`);
   };
 
-  const handleDeleteUserAdmin = (userId: string) => {
-    setUsers(prev => {
-      const updatedList = prev.filter(u => u.id !== userId);
-      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users: updatedList })
-      }).catch(err => console.error('Sync users error:', err));
-      return updatedList;
-    });
+  const handleDeleteUserAdmin = async (userId: string) => {
+    await firestore.deleteUser(userId);
     if (currentUser && currentUser.id === userId) {
       setCurrentUser(null);
       localStorage.removeItem('celeste_current_user');
@@ -633,87 +404,34 @@ export default function App() {
     triggerToast(`تم حذف العضو بنجاح.`);
   };
 
-  const handleToggleUserStatusAdmin = (userId: string) => {
-    setUsers(prev => {
-      const updatedList = prev.map(u => {
-        if (u.id === userId) {
-          const newStatus: 'active' | 'blocked' = u.status === 'active' ? 'blocked' : 'active';
-          return { ...u, status: newStatus };
-        }
-        return u;
-      });
-      localStorage.setItem('celeste_users', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users: updatedList })
-      }).catch(err => console.error('Sync users error:', err));
-      return updatedList;
-    });
+  const handleToggleUserStatusAdmin = async (userId: string) => {
+    await firestore.toggleUserStatus(userId);
     triggerToast('تم تغيير حالة حساب العضو.');
   };
 
   // Promo Code Handlers
-  const handleAddPromoCode = (promo: PromoCode) => {
-    setPromoCodes(prev => {
-      const updatedList = [promo, ...prev];
-      localStorage.setItem('celeste_promo_codes', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promoCodes: updatedList })
-      }).catch(err => console.error('Sync promo codes error:', err));
-      return updatedList;
-    });
+  const handleAddPromoCode = async (promo: PromoCode) => {
+    await firestore.addPromoCode(promo);
     triggerToast(`تمت إضافة كود الخصم (${promo.code}) بنجاح! 🏷️`);
   };
 
-  const handleUpdatePromoCode = (updatedPromo: PromoCode) => {
-    setPromoCodes(prev => {
-      const updatedList = prev.map(p => p.id === updatedPromo.id ? updatedPromo : p);
-      localStorage.setItem('celeste_promo_codes', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promoCodes: updatedList })
-      }).catch(err => console.error('Sync promo codes error:', err));
-      return updatedList;
-    });
+  const handleUpdatePromoCode = async (updatedPromo: PromoCode) => {
+    await firestore.updatePromoCode(updatedPromo);
     triggerToast(`تم تحديث بيانات كود الخصم (${updatedPromo.code}) بنجاح! ✨`);
   };
 
-  const handleDeletePromoCode = (promoId: string) => {
-    setPromoCodes(prev => {
-      const updatedList = prev.filter(p => p.id !== promoId);
-      localStorage.setItem('celeste_promo_codes', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promoCodes: updatedList })
-      }).catch(err => console.error('Sync promo codes error:', err));
-      return updatedList;
-    });
+  const handleDeletePromoCode = async (promoId: string) => {
+    await firestore.deletePromoCode(promoId);
     triggerToast('تم حذف كود الخصم بنجاح.');
   };
 
-  const handleTogglePromoCodeStatus = (promoId: string) => {
-    setPromoCodes(prev => {
-      const updatedList = prev.map(p => {
-        if (p.id === promoId) {
-          const updated = { ...p, isActive: !p.isActive };
-          triggerToast(`تم ${updated.isActive ? 'تفعيل' : 'إيقاف'} كود الخصم (${updated.code})`);
-          return updated;
-        }
-        return p;
-      });
-      localStorage.setItem('celeste_promo_codes', JSON.stringify(updatedList));
-      fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promoCodes: updatedList })
-      }).catch(err => console.error('Sync promo codes error:', err));
-      return updatedList;
-    });
+  const handleTogglePromoCodeStatus = async (promoId: string) => {
+    await firestore.togglePromoCodeStatus(promoId);
+  };
+
+  const handleUpdateRestaurantInfo = async (info: RestaurantInfo) => {
+    await firestore.updateRestaurantInfo(info);
+    triggerToast('تم تحديث بيانات ومعلومات المطعم في السحابة بنجاح! ☁️');
   };
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -835,17 +553,6 @@ export default function App() {
           </header>
         );
     }
-  };
-
-  const handleUpdateRestaurantInfo = (newInfo: RestaurantInfo) => {
-    setRestaurantInfo(newInfo);
-    localStorage.setItem('celeste_restaurant_info', JSON.stringify(newInfo));
-    fetch('/api/state', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ restaurantInfo: newInfo })
-    }).catch(err => console.error('Sync restaurantInfo error:', err));
-    triggerToast('تم تحديث بيانات وتفاصيل المطعم بنجاح!');
   };
 
   if (isSupervisorMode) {

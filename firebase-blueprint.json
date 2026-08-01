@@ -1,0 +1,91 @@
+{
+  "entities": {
+    "menuItems": {
+      "title": "MenuItems",
+      "description": "Restaurant menu items and dishes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "image": { "type": "string" },
+        "category": { "type": "string" },
+        "rating": { "type": "number" },
+        "organic": { "type": "boolean" },
+        "popular": { "type": "boolean" },
+        "sideDishOptions": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "name", "price", "category"]
+    },
+    "categories": {
+      "title": "Categories",
+      "description": "Menu category names",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "orders": {
+      "title": "Orders",
+      "description": "Customer food orders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "status": { "type": "string" },
+        "total": { "type": "number" }
+      },
+      "required": ["id", "customerName", "customerPhone", "status", "total"]
+    },
+    "reservations": {
+      "title": "Reservations",
+      "description": "Table bookings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "date": { "type": "string" },
+        "timeSlot": { "type": "string" }
+      },
+      "required": ["id", "customerName", "customerPhone", "date", "timeSlot"]
+    },
+    "users": {
+      "title": "Users",
+      "description": "System users and supervisors",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "required": ["id", "username", "role"]
+    },
+    "promoCodes": {
+      "title": "PromoCodes",
+      "description": "Discount vouchers and promo codes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "code", "isActive"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Restaurant configuration and settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    }
+  }
+}
